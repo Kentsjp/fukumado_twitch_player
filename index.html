@@ -1,1 +1,60 @@
-this is test page.
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Fukumado Twitch Player</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #000;
+    }
+    #player-container {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+
+  <!-- Twitch のプレイヤースクリプト -->
+  <script src="https://player.twitch.tv/js/embed/v1.js"></script>
+</head>
+<body>
+  <div id="player-container"></div>
+
+  <script>
+    // クエリパラメータから設定を取得
+    const params = new URLSearchParams(window.location.search);
+    const channel = params.get('channel') || 'twitch';     // デフォルトチャンネル
+    const initialMuted = params.get('muted') === '1';      // ?muted=1 ならミュート開始
+    const volumeParam = params.get('volume');              // 0.0〜1.0
+    const initialVolume = volumeParam !== null ? parseFloat(volumeParam) : 0.5;
+
+    // Twitch プレイヤー生成
+    const options = {
+      width: '100%',
+      height: '100%',
+      channel: channel,
+      // 必ず自分の GitHub Pages のドメインに変更する
+      parent: ['kentsjp.github.io']
+    };
+
+    const player = new Twitch.Player('player-container', options);
+
+    // プレイヤーの準備ができたら音量などを反映
+    player.addEventListener(Twitch.Player.READY, function () {
+      if (!isNaN(initialVolume)) {
+        player.setVolume(initialVolume);
+      }
+      player.setMuted(initialMuted);
+    });
+
+    // 必要になったら、ウィンドウ→ネイティブ側の JS ブリッジ用関数もここに足せます
+    // 例:
+    // window.fukumadoMute = () => player.setMuted(true);
+    // window.fukumadoUnmute = () => player.setMuted(false);
+  </script>
+</body>
+</html>
