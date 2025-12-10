@@ -111,20 +111,21 @@
     const chatChannelParam= qs.get('chatChannel');  // チャット表示に使うチャンネル名（任意）
 
     const mutedParam   = qs.get('muted');
-    const volumeParam  = qs.get('volume');
+    const volumeParam  = qs.get('volume');          // 今回は初期音量固定なので実質未使用
     const chatParam    = qs.get('chat');      // 'on' / 'off'
     const modeParam    = qs.get('mode');      // 'side' / 'overlay'
     const sideParam    = qs.get('side');      // 'left' / 'right'
     const overlayPosParam = qs.get('pos');    // 'tl' / 'tr' / 'bl' / 'br'
 
     const initialMuted  = mutedParam === '1';
-    const initialVolume = volumeParam !== null ? parseFloat(volumeParam) : 0.5;
+    // 初期音量は常に一定値にする（muted フラグだけで ON/OFF を制御）
+    const initialVolume = 1.0;
 
     // チャットに使うチャンネル名
     const chatChannel =
       chatChannelParam ||
-      channelParam ||   // channel があればそれを使う
-      null;             // どちらも無ければチャット非表示
+      channelParam ||
+      null;
 
     // ===== レイアウトDOM =====
     const rootEl = document.getElementById('root');
@@ -183,23 +184,19 @@
     })();
 
     // ===== Twitch プレイヤー初期化 =====
-    const TWITCH_PARENT = 'kentsjp.github.io';  // 例: 'yourname.github.io'
+    const TWITCH_PARENT = 'kentsjp.github.io';
 
     const playerOptions = {
       width: '100%',
       height: '100%',
       parent: [TWITCH_PARENT]
-      // channel / video / collection のうち 1つを後で足す [web:2][web:168]
     };
 
     if (videoParam) {
-      // VOD: video=v123456 形式を期待
       playerOptions.video = videoParam;
     } else if (channelParam) {
-      // ライブ: channel=foo
       playerOptions.channel = channelParam;
     } else {
-      // どちらも無ければデフォルトチャンネルにフォールバック（任意）
       playerOptions.channel = 'twitch';
     }
 
@@ -216,7 +213,7 @@
     function buildChatUrl(channelName) {
       const base = 'https://www.twitch.tv/embed/' + encodeURIComponent(channelName) + '/chat';
       const url = new URL(base);
-      url.searchParams.set('parent', TWITCH_PARENT); // 埋め込み先ドメイン [web:91]
+      url.searchParams.set('parent', TWITCH_PARENT);
       url.searchParams.set('darkpopout', '');
       return url.toString();
     }
@@ -224,14 +221,12 @@
     if (chatChannel) {
       chatIframe.src = buildChatUrl(chatChannel);
     } else {
-      // チャットチャンネルが無いときは完全に隠す
       setChatVisible(false);
     }
 
     // ===== Fukumado からの JS ブリッジ =====
 
     window.fukumadoSetChatVisible = function (isVisible) {
-      // chatChannel が無ければ何もしない
       if (!chatChannel) return;
       setChatVisible(!!isVisible);
     };
@@ -248,14 +243,37 @@
       setOverlayPosition(pos || 'br');
     };
 
-    window.fukumadoSetMuted = function (muted) {
-      player.setMuted(!!muted);
+    // muted: true/false, byGlobal: グローバル音声切り替え由来かどうか
+    window.fukumadoSetMuted = function (muted, byGlobal) {
+      if (!player) return;
+
+      const m = !!muted;
+      const needResume = !!byGlobal;
+
+      try {
+        player.setMuted(m);
+      } catch (e) {}
+
+      // グローバル音声切り替え時だけ再生再開を試みる
+      if (needResume) {
+        try {
+          if (typeof player.play === 'function') {
+            player.play();
+          }
+        } catch (e) {}
+      }
     };
 
     window.fukumadoSetVolume = function (volume) {
       const v = Math.max(0, Math.min(1, Number(volume)));
-      player.setVolume(v);
-      if (v > 0) player.setMuted(false);
+      try {
+        player.setVolume(v);
+      } catch (e) {}
+      if (v > 0) {
+        try {
+          player.setMuted(false);
+        } catch (e) {}
+      }
     };
 
   </script>
