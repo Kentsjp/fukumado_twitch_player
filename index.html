@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <title>Fukumado Twitch Player</title>
+  <title>Fukumado Twitch Viewer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <style>
@@ -11,39 +11,200 @@
       padding: 0;
       height: 100%;
       background: #000;
+      overflow: hidden;
     }
-    #player-container {
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    #root {
       width: 100%;
       height: 100%;
     }
+
+    /* サイドバイサイド */
+    .layout-side {
+      display: flex;
+      flex-direction: row;
+      width: 100%;
+      height: 100%;
+    }
+
+    .layout-side.reverse {
+      flex-direction: row-reverse;
+    }
+
+    #video-area {
+      flex: 1 1 auto;
+      position: relative;
+      background: #000;
+    }
+
+    #chat-area {
+      flex: 0 0 30%;
+      max-width: 360px;
+      min-width: 220px;
+      height: 100%;
+      background: #18181b;
+    }
+
+    /* オーバーレイ */
+    .layout-overlay {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    .layout-overlay #video-area {
+      position: absolute;
+      inset: 0;
+    }
+
+    .layout-overlay #chat-area {
+      position: absolute;
+      width: 40%;
+      max-width: 380px;
+      height: 45%;
+      max-height: 320px;
+      pointer-events: auto;
+      background: #18181b;
+      box-shadow: 0 0 8px rgba(0, 0, 0, 0.7);
+    }
+
+    .pos-top-left    { top: 0.5rem; left: 0.5rem; }
+    .pos-top-right   { top: 0.5rem; right: 0.5rem; }
+    .pos-bottom-left { bottom: 0.5rem; left: 0.5rem; }
+    .pos-bottom-right{ bottom: 0.5rem; right: 0.5rem; }
+
+    .chat-hidden #chat-area {
+      display: none;
+    }
+
+    #player-container,
+    #chat-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
   </style>
 
-  <!-- Twitch のプレイヤースクリプト -->
+  <!-- Twitch プレイヤー JS -->
   <script src="https://player.twitch.tv/js/embed/v1.js"></script>
 </head>
 <body>
-  <div id="player-container"></div>
+  <div id="root" class="layout-side">
+    <div id="video-area">
+      <div id="player-container"></div>
+    </div>
+    <div id="chat-area">
+      <iframe id="chat-iframe" loading="lazy"></iframe>
+    </div>
+  </div>
 
   <script>
-    // クエリパラメータから設定を取得
-    const params = new URLSearchParams(window.location.search);
-    const channel = params.get('channel') || 'twitch';     // デフォルトチャンネル
-    const initialMuted = params.get('muted') === '1';      // ?muted=1 ならミュート開始
-    const volumeParam = params.get('volume');              // 0.0〜1.0
+    // ===== クエリ取得 =====
+    const qs = new URLSearchParams(window.location.search);
+
+    const channelParam    = qs.get('channel');      // 生放送用
+    const videoParam      = qs.get('video');        // VOD用 (例: v40464143)
+    const chatChannelParam= qs.get('chatChannel');  // チャット表示に使うチャンネル名（任意）
+
+    const mutedParam   = qs.get('muted');
+    const volumeParam  = qs.get('volume');
+    const chatParam    = qs.get('chat');      // 'on' / 'off'
+    const modeParam    = qs.get('mode');      // 'side' / 'overlay'
+    const sideParam    = qs.get('side');      // 'left' / 'right'
+    const overlayPosParam = qs.get('pos');    // 'tl' / 'tr' / 'bl' / 'br'
+
+    const initialMuted  = mutedParam === '1';
     const initialVolume = volumeParam !== null ? parseFloat(volumeParam) : 0.5;
 
-    // Twitch プレイヤー生成
-    const options = {
+    // チャットに使うチャンネル名
+    const chatChannel =
+      chatChannelParam ||
+      channelParam ||   // channel があればそれを使う
+      null;             // どちらも無ければチャット非表示
+
+    // ===== レイアウトDOM =====
+    const rootEl = document.getElementById('root');
+    const chatIframe = document.getElementById('chat-iframe');
+
+    function setChatVisible(isVisible) {
+      rootEl.classList.toggle('chat-hidden', !isVisible);
+    }
+
+    function setChatMode(mode) {
+      rootEl.classList.remove('layout-side', 'layout-overlay');
+      if (mode === 'overlay') {
+        rootEl.classList.add('layout-overlay');
+      } else {
+        rootEl.classList.add('layout-side');
+      }
+    }
+
+    function setSidePosition(side) {
+      const reverse = side === 'left';
+      rootEl.classList.toggle('reverse', reverse);
+    }
+
+    function setOverlayPosition(pos) {
+      const chatArea = document.getElementById('chat-area');
+      chatArea.classList.remove(
+        'pos-top-left',
+        'pos-top-right',
+        'pos-bottom-left',
+        'pos-bottom-right'
+      );
+      switch (pos) {
+        case 'tl': chatArea.classList.add('pos-top-left'); break;
+        case 'tr': chatArea.classList.add('pos-top-right'); break;
+        case 'bl': chatArea.classList.add('pos-bottom-left'); break;
+        case 'br':
+        default:   chatArea.classList.add('pos-bottom-right'); break;
+      }
+    }
+
+    // ===== 初期レイアウト（URL から反映） =====
+    (function initLayoutFromParams() {
+      const chatOn = (chatParam !== 'off') && !!chatChannel;
+      setChatVisible(chatOn);
+
+      const mode = (modeParam === 'overlay') ? 'overlay' : 'side';
+      setChatMode(mode);
+
+      if (mode === 'side') {
+        const side = (sideParam === 'left') ? 'left' : 'right';
+        setSidePosition(side);
+      } else {
+        const pos = overlayPosParam || 'br';
+        setOverlayPosition(pos);
+      }
+    })();
+
+    // ===== Twitch プレイヤー初期化 =====
+    const TWITCH_PARENT = 'kentsjp.github.io';  // 例: 'yourname.github.io'
+
+    const playerOptions = {
       width: '100%',
       height: '100%',
-      channel: channel,
-      // 必ず自分の GitHub Pages のドメインに変更する
-      parent: ['kentsjp.github.io']
+      parent: [TWITCH_PARENT]
+      // channel / video / collection のうち 1つを後で足す [web:2][web:168]
     };
 
-    const player = new Twitch.Player('player-container', options);
+    if (videoParam) {
+      // VOD: video=v123456 形式を期待
+      playerOptions.video = videoParam;
+    } else if (channelParam) {
+      // ライブ: channel=foo
+      playerOptions.channel = channelParam;
+    } else {
+      // どちらも無ければデフォルトチャンネルにフォールバック（任意）
+      playerOptions.channel = 'twitch';
+    }
 
-    // プレイヤーの準備ができたら音量などを反映
+    const player = new Twitch.Player('player-container', playerOptions);
+
     player.addEventListener(Twitch.Player.READY, function () {
       if (!isNaN(initialVolume)) {
         player.setVolume(initialVolume);
@@ -51,10 +212,52 @@
       player.setMuted(initialMuted);
     });
 
-    // 必要になったら、ウィンドウ→ネイティブ側の JS ブリッジ用関数もここに足せます
-    // 例:
-    // window.fukumadoMute = () => player.setMuted(true);
-    // window.fukumadoUnmute = () => player.setMuted(false);
+    // ===== チャット iframe 初期化 =====
+    function buildChatUrl(channelName) {
+      const base = 'https://www.twitch.tv/embed/' + encodeURIComponent(channelName) + '/chat';
+      const url = new URL(base);
+      url.searchParams.set('parent', TWITCH_PARENT); // 埋め込み先ドメイン [web:91]
+      url.searchParams.set('darkpopout', '');
+      return url.toString();
+    }
+
+    if (chatChannel) {
+      chatIframe.src = buildChatUrl(chatChannel);
+    } else {
+      // チャットチャンネルが無いときは完全に隠す
+      setChatVisible(false);
+    }
+
+    // ===== Fukumado からの JS ブリッジ =====
+
+    window.fukumadoSetChatVisible = function (isVisible) {
+      // chatChannel が無ければ何もしない
+      if (!chatChannel) return;
+      setChatVisible(!!isVisible);
+    };
+
+    window.fukumadoSetChatMode = function (mode) {
+      setChatMode(mode === 'overlay' ? 'overlay' : 'side');
+    };
+
+    window.fukumadoSetChatSide = function (side) {
+      setSidePosition(side === 'left' ? 'left' : 'right');
+    };
+
+    window.fukumadoSetChatOverlayPos = function (pos) {
+      setOverlayPosition(pos || 'br');
+    };
+
+    window.fukumadoSetMuted = function (muted) {
+      player.setMuted(!!muted);
+    };
+
+    window.fukumadoSetVolume = function (volume) {
+      const v = Math.max(0, Math.min(1, Number(volume)));
+      player.setVolume(v);
+      if (v > 0) player.setMuted(false);
+    };
   </script>
 </body>
 </html>
+
