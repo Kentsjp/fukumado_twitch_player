@@ -106,16 +106,16 @@
     // ===== クエリ取得 =====
     const qs = new URLSearchParams(window.location.search);
 
-    const channelParam    = qs.get('channel');      // 生放送用
-    const videoParam      = qs.get('video');        // VOD用 (例: v40464143)
-    const chatChannelParam= qs.get('chatChannel');  // チャット表示に使うチャンネル名（任意）
+    const channelParam     = qs.get('channel');      // 生放送用
+    const videoParam       = qs.get('video');        // VOD用 (例: v40464143)
+    const chatChannelParam = qs.get('chatChannel');  // チャット表示に使うチャンネル名（任意）
 
-    const mutedParam   = qs.get('muted');
-    const volumeParam  = qs.get('volume');          // 今回は初期音量固定なので実質未使用
-    const chatParam    = qs.get('chat');      // 'on' / 'off'
-    const modeParam    = qs.get('mode');      // 'side' / 'overlay'
-    const sideParam    = qs.get('side');      // 'left' / 'right'
-    const overlayPosParam = qs.get('pos');    // 'tl' / 'tr' / 'bl' / 'br'
+    const mutedParam       = qs.get('muted');
+    const volumeParam      = qs.get('volume');       // 今回は初期音量固定なので実質未使用
+    const chatParam        = qs.get('chat');         // 'on' / 'off'
+    const modeParam        = qs.get('mode');         // 'side' / 'overlay'
+    const sideParam        = qs.get('side');         // 'left' / 'right'
+    const overlayPosParam  = qs.get('pos');          // 'tl' / 'tr' / 'bl' / 'br'
 
     const initialMuted  = mutedParam === '1';
     // 初期音量は常に一定値にする（muted フラグだけで ON/OFF を制御）
@@ -203,10 +203,23 @@
     const player = new Twitch.Player('player-container', playerOptions);
 
     player.addEventListener(Twitch.Player.READY, function () {
+      // 初期音量を適用
       if (!isNaN(initialVolume)) {
-        player.setVolume(initialVolume);
+        try {
+          player.setVolume(initialVolume);
+        } catch (e) {}
       }
-      player.setMuted(initialMuted);
+      // 初期ミュート状態を適用（窓ごとの音有／音無設定）
+      try {
+        player.setMuted(initialMuted);
+      } catch (e) {}
+
+      // ★ 初期表示時に必ず再生開始（muted の有無に応じて音有／音無で再生）
+      try {
+        if (typeof player.play === 'function') {
+          player.play();
+        }
+      } catch (e) {}
     });
 
     // ===== チャット iframe 初期化 =====
@@ -279,4 +292,3 @@
   </script>
 </body>
 </html>
-
