@@ -257,6 +257,43 @@
       player.setVolume(v);
       if (v > 0) player.setMuted(false);
     };
+    // プレイヤーインスタンスをどこかで保持しておく
+    let twitchPlayer = null;
+    
+    // プレイヤー生成時（既存の new Twitch.Player の結果をここに入れる）
+    function createTwitchPlayer(options) {
+      twitchPlayer = new Twitch.Player("twitch_player", options);
+      // 既存のイベントリスナ設定などがあればここで続ける
+      return twitchPlayer;
+    }
+    
+    // Flutter 側から呼び出すミュート制御
+    window.fukumadoSetMuted = function(isMuted) {
+      if (!twitchPlayer) return;
+      try {
+        twitchPlayer.setMuted(!!isMuted);
+      } catch (e) {}
+    };
+    
+    // Flutter 側から呼び出すチャット表示 ON/OFF
+    window.fukumadoSetChatVisible = function(visible) {
+      var chat = document.getElementById("twitch_chat"); // 既存チャット iframe のラッパ
+      if (!chat) return;
+      chat.style.display = visible ? "block" : "none";
+    };
+    
+    // Flutter 側から呼び出すチャット位置 left/right
+    window.fukumadoSetChatSide = function(side) {
+      var container = document.getElementById("layout_root"); // 埋め込み全体のルート
+      if (!container) return;
+      container.classList.remove("chat-left", "chat-right");
+      if (side === "right") {
+        container.classList.add("chat-right");
+      } else {
+        container.classList.add("chat-left");
+      }
+    };
+
   </script>
 </body>
 </html>
