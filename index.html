@@ -316,7 +316,7 @@
 
     // 自動再生ブロック系イベントが来たら諦める
     player.addEventListener(Twitch.Player.PLAYBACK_BLOCKED, function () {
-      shouldBePlaying = false;
+      retryCount = MAX_RETRY;
     });
 
     window.fukumadoSetVolume = function (volume) {
