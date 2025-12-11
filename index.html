@@ -189,7 +189,9 @@
     const playerOptions = {
       width: '100%',
       height: '100%',
-      parent: [TWITCH_PARENT]
+      parent: [TWITCH_PARENT],
+      autoplay: true,   // ミュート前提の自動再生
+      muted: true
     };
 
     if (videoParam) {
@@ -202,24 +204,35 @@
 
     const player = new Twitch.Player('player-container', playerOptions);
 
-    player.addEventListener(Twitch.Player.READY, function () {
-      // 初期音量を適用
-      if (!isNaN(initialVolume)) {
-        try {
-          player.setVolume(initialVolume);
-        } catch (e) {}
-      }
-      // 初期ミュート状態を適用（窓ごとの音有／音無設定）
-      try {
-        player.setMuted(initialMuted);
-      } catch (e) {}
+    // 初回再生のリトライ用
+    let initialPlayAttempts = 0;
+    const MAX_INITIAL_PLAY_ATTEMPTS = 3;
 
-      // ★ 初期表示時に必ず再生開始（muted の有無に応じて音有／音無で再生）
+    function tryInitialPlay() {
+      if (initialPlayAttempts >= MAX_INITIAL_PLAY_ATTEMPTS) return;
+      initialPlayAttempts++;
       try {
         if (typeof player.play === 'function') {
           player.play();
         }
-      } catch (e) {}
+      } catch (e) {
+        // ここでは握りつぶすだけ
+      }
+    }
+
+    player.addEventListener(Twitch.Player.READY, function () {
+      // 初期音量
+      if (!isNaN(initialVolume)) {
+        try { player.setVolume(initialVolume); } catch (e) {}
+      }
+
+      // Flutter 側から渡された初期ミュート（音あり窓＝false / 音なし窓＝true）
+      try { player.setMuted(initialMuted); } catch (e) {}
+
+      // ★ 音あり／音なしに関係なく、全窓で「再生」だけは最大3回試す
+      tryInitialPlay();
+      setTimeout(tryInitialPlay, 300);
+      setTimeout(tryInitialPlay, 1000);
     });
 
     // ===== チャット iframe 初期化 =====
@@ -256,26 +269,55 @@
       setOverlayPosition(pos || 'br');
     };
 
+    // グローバル音声切り替え用の再生状態トラッキング
+    let shouldBePlaying = false;
+    let retryCount = 0;
+    const MAX_RETRY = 2;
+
     // muted: true/false, byGlobal: グローバル音声切り替え由来かどうか
     window.fukumadoSetMuted = function (muted, byGlobal) {
       if (!player) return;
 
       const m = !!muted;
-      const needResume = !!byGlobal;
+      const global = !!byGlobal;
 
       try {
         player.setMuted(m);
       } catch (e) {}
 
-      // グローバル音声切り替え時だけ再生再開を試みる
-      if (needResume) {
-        try {
-          if (typeof player.play === 'function') {
-            player.play();
-          }
-        } catch (e) {}
+      if (global && !m) {
+        // この窓は「音ありで再生していたい」
+        shouldBePlaying = true;
+        retryCount = 0;
+        tryPlayWithRetry();
+      } else if (m) {
+        // ミュート指定 → 音が鳴っている必要はない
+        shouldBePlaying = false;
       }
     };
+
+    function tryPlayWithRetry() {
+      if (!shouldBePlaying || retryCount >= MAX_RETRY) return;
+      retryCount++;
+      try {
+        if (typeof player.play === 'function') {
+          player.play();
+        }
+      } catch (e) {
+        // ここでは握りつぶすだけ
+      }
+    }
+
+    // PAUSE されたら、必要ならもう一度だけ play を試す
+    player.addEventListener(Twitch.Player.PAUSE, function () {
+      if (!shouldBePlaying) return;
+      setTimeout(tryPlayWithRetry, 200);
+    });
+
+    // 自動再生ブロック系イベントが来たら諦める
+    player.addEventListener(Twitch.Player.PLAYBACK_BLOCKED, function () {
+      shouldBePlaying = false;
+    });
 
     window.fukumadoSetVolume = function (volume) {
       const v = Math.max(0, Math.min(1, Number(volume)));
