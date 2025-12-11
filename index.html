@@ -190,8 +190,8 @@
       width: '100%',
       height: '100%',
       parent: [TWITCH_PARENT],
-      autoplay: true,   // ミュート前提の自動再生
-      muted: true
+      autoplay: true,
+      muted: initialMuted  // ← initialMuted を使用
     };
 
     if (videoParam) {
