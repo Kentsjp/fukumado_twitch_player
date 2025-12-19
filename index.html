@@ -43,10 +43,11 @@
 
     #chat-area {
       flex: 0 0 30%;
-      max-width: 360px;
-      min-width: 220px;
+      max-width: 500px;
+      min-width: 150px;
       height: 100%;
       background: #18181b;
+      transition: flex-basis 0.2s ease, width 0.2s ease;
     }
 
     /* オーバーレイ */
@@ -64,7 +65,7 @@
     .layout-overlay #chat-area {
       position: absolute;
       width: 40%;
-      max-width: 380px;
+      max-width: 500px;
       height: 45%;
       max-height: 320px;
       pointer-events: auto;
@@ -116,6 +117,7 @@
     const modeParam        = qs.get('mode');         // 'side' / 'overlay'
     const sideParam        = qs.get('side');         // 'left' / 'right'
     const overlayPosParam  = qs.get('pos');          // 'tl' / 'tr' / 'bl' / 'br'
+    const chatWidthParam   = qs.get('chatWidth');    // ★ 追加: チャット幅比率 (0.1〜0.6)
 
     const initialMuted  = mutedParam === '1';
     // 初期音量は常に一定値にする（muted フラグだけで ON/OFF を制御）
@@ -166,6 +168,24 @@
       }
     }
 
+    // ★ 追加: チャット幅を設定
+    function setChatWidth(ratio) {
+      const chatArea = document.getElementById('chat-area');
+      if (!chatArea) return;
+      
+      // 比率を0.1〜0.6の範囲にクランプ
+      const clampedRatio = Math.max(0.1, Math.min(0.6, Number(ratio) || 0.3));
+      const percent = Math.round(clampedRatio * 100);
+      
+      // flex-basisを変更してチャット幅を調整
+      chatArea.style.flexBasis = percent + '%';
+      
+      // オーバーレイモードの場合はwidthも変更
+      if (rootEl.classList.contains('layout-overlay')) {
+        chatArea.style.width = percent + '%';
+      }
+    }
+
     // ===== 初期レイアウト（URL から反映） =====
     (function initLayoutFromParams() {
       const chatOn = (chatParam !== 'off') && !!chatChannel;
@@ -180,6 +200,11 @@
       } else {
         const pos = overlayPosParam || 'br';
         setOverlayPosition(pos);
+      }
+
+      // ★ 追加: 初期チャット幅を適用
+      if (chatWidthParam) {
+        setChatWidth(parseFloat(chatWidthParam));
       }
     })();
 
@@ -267,6 +292,11 @@
 
     window.fukumadoSetChatOverlayPos = function (pos) {
       setOverlayPosition(pos || 'br');
+    };
+
+    // ★ 追加: チャット幅変更ブリッジ
+    window.fukumadoSetChatWidth = function (ratio) {
+      setChatWidth(ratio);
     };
 
     // グローバル音声切り替え用の再生状態トラッキング
